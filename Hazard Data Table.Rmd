@@ -1,0 +1,674 @@
+---
+title: "DataTable - Hazard Performance"
+author: "Aditya Kaul"
+date: "12/2/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(DT)
+library(devtools)
+library(htmltab)
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+
+data_import_fn <- function(year){
+  
+url <- "https://www.transfermarkt.co.uk/eden-hazard/leistungsdatendetails/spieler/50202/saison/YYYY/verein/631/liga/0/wettbewerb//pos/0/trainer_id/0/plus/1"
+
+updated_url <- gsub('YYYY',as.character(year),url)
+
+num <- 1
+new_data <- htmltab(doc = updated_url, which = num, rm_nodata_cols = F)
+
+while(nrow(new_data) != 38){
+
+  new_data <- htmltab(doc = updated_url, which = num, rm_nodata_cols = F)
+  num <- num + 1
+
+}
+
+new_data <- new_data %>%
+  setNames(c("GW", "Date", "Home_Team1", "Home_Team", "Visiting_Team1", "Visiting_Team",
+                        "Result", "Position", "Goals_Scored", "Assists", "Own_Goals", "Yellow_Cards",
+                        "Two_Yellows", "Red_Cards", "Substituted_In", "Substituted_Out", "Minutes_Played"))
+
+#colnames(new_data) <- c("GW", "Date", "Home_Team1", "Home_Team", "Visiting_Team1", "Visiting_Team",
+#                        "Result", "Position", "Goals_Scored", "Assists", "Own_Goals", "Yellow_Cards",
+#                        "Two_Yellows", "Red_Cards", "Substituted_In", "Substituted_Out", "Minutes_Played")
+
+#new_data$Home_Team1 <- NULL
+#new_data$Visiting_Team1 <- NULL
+
+new_data <- new_data %>%
+  select(-c(Home_Team1, Visiting_Team1))
+
+return(new_data)
+  
+}
+
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+
+yearly_data_2012 <- data_import_fn(2012)
+yearly_data_2013 <- data_import_fn(2013)
+yearly_data_2014 <- data_import_fn(2014)
+yearly_data_2015 <- data_import_fn(2015)
+yearly_data_2016 <- data_import_fn(2016)
+
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+
+data_cleaning_fn <- function(df) {
+broken_data <- df %>%
+  separate(Result, c("Team_Goals_Scored", "Team_Goals_Against"), ":")
+
+broken_data_1 <- broken_data %>%
+  separate(Home_Team, c("Home_Team","GW_Position1"), "\\(")
+
+#broken_data_1$GW_Position1 <- gsub(".)", "", broken_data_1$GW_Position1)
+
+broken_data_1 <- broken_data_1 %>%
+  mutate(GW_Position1 = gsub(".)", "", broken_data_1$GW_Position1))
+
+broken_data_2 <- broken_data_1 %>%
+  separate(Visiting_Team, c("Visiting_Team","GW_Position2"), "\\(")
+
+#broken_data_2$GW_Position2 <- gsub(".)", "", broken_data_2$GW_Position2)
+
+broken_data_2 <- broken_data_2 %>%
+  mutate(GW_Position2 = gsub(".)", "", broken_data_2$GW_Position2))
+
+#str(broken_data_2)
+
+broken_data_2 <- broken_data_2 %>%
+  mutate(Team_Goals_Scored = as.numeric(broken_data_2$Team_Goals_Scored),
+         Team_Goals_Against = as.numeric(broken_data_2$Team_Goals_Against),
+         Goals_Scored = as.numeric(broken_data_2$Goals_Scored),
+         Assists = as.numeric(broken_data_2$Assists),
+         Own_Goals = as.numeric(broken_data_2$Own_Goals))
+
+#broken_data_2$Team_Goals_Scored <- as.numeric(broken_data_2$Team_Goals_Scored)
+#broken_data_2$Team_Goals_Against <- as.numeric(broken_data_2$Team_Goals_Against)
+#broken_data_2$Goals_Scored <- as.numeric(broken_data_2$Goals_Scored)
+#broken_data_2$Assists <- as.numeric(broken_data_2$Assists)
+#broken_data_2$Own_Goals <- as.numeric(broken_data_2$Own_Goals)
+
+#Convert the date into a date format to get some time series analysis graphs for the future
+broken_data_3 <- broken_data_2 %>%
+  separate(Date, c("Date","Year"), ", ")
+
+broken_data_4 <- broken_data_3 %>%
+  separate(Date, c("Month","Date"), " ")
+
+
+#broken_data_4$Month <- gsub('\\s+','',broken_data_4$Month)
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Month = gsub('\\s+','',broken_data_4$Month))
+
+#broken_data_4$Month_No <- ifelse(broken_data_4$Month == 'Jan',1,
+#                                 ifelse(broken_data_4$Month == 'Feb',2,
+#                                  ifelse(broken_data_4$Month == 'Mar',3,
+#                                    ifelse(broken_data_4$Month == 'Apr',4,
+#                                      ifelse(broken_data_4$Month == 'May',5,
+#                                        ifelse(broken_data_4$Month == 'Jun',6,
+#                                          ifelse(broken_data_4$Month == 'Jul',7,
+#                                            ifelse(broken_data_4$Month == 'Aug',8,
+#                                              ifelse(broken_data_4$Month == 'Sep',9,
+#                                                ifelse(broken_data_4$Month == 'Oct',10,
+#                                                  ifelse(broken_data_4$Month == 'Nov',11,
+#                                                    ifelse(broken_data_4$Month == 'Dec',12,0))))))))))))
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Month_No = ifelse(broken_data_4$Month == 'Jan',1,
+                                 ifelse(broken_data_4$Month == 'Feb',2,
+                                  ifelse(broken_data_4$Month == 'Mar',3,
+                                    ifelse(broken_data_4$Month == 'Apr',4,
+                                      ifelse(broken_data_4$Month == 'May',5,
+                                        ifelse(broken_data_4$Month == 'Jun',6,
+                                          ifelse(broken_data_4$Month == 'Jul',7,
+                                            ifelse(broken_data_4$Month == 'Aug',8,
+                                              ifelse(broken_data_4$Month == 'Sep',9,
+                                                ifelse(broken_data_4$Month == 'Oct',10,
+                                                  ifelse(broken_data_4$Month == 'Nov',11,
+                                                    ifelse(broken_data_4$Month == 'Dec',12,0)))))))))))))
+
+  
+#broken_data_4$Complete_Date <- paste(broken_data_4$Year,broken_data_4$Month_No,broken_data_4$Date,sep = '-')
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Complete_Date = paste(broken_data_4$Year,broken_data_4$Month_No,broken_data_4$Date,sep = '-'))
+
+#broken_data_4$Complete_Date <- as.Date(broken_data_4$Complete_Date)
+#broken_data_4$GW_Position1 <- as.numeric(broken_data_4$GW_Position1)
+#broken_data_4$GW_Position2 <- as.numeric(broken_data_4$GW_Position2)
+
+#broken_data_4$Home_Team <- gsub('\\s+','',broken_data_4$Home_Team)
+#broken_data_4$Visiting_Team <- gsub('\\s+','',broken_data_4$Visiting_Team)
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Complete_Date = as.Date(broken_data_4$Complete_Date),
+         GW_Position1 = as.numeric(broken_data_4$GW_Position1),
+         GW_Position2 = as.numeric(broken_data_4$GW_Position2),
+         Home_Team = gsub('\\s+','',broken_data_4$Home_Team),
+         Visiting_Team = gsub('\\s+','',broken_data_4$Visiting_Team))
+
+#broken_data_4$Team_position <- NULL         
+
+#broken_data_4 <- broken_data_4 %>%
+#  select(-c(Team_position))
+
+#broken_data_4$Team_position1[broken_data_4$Home_Team == "Chelsea"] <- broken_data_4$GW_Position1
+#broken_data_4$Team_position2[broken_data_4$Visiting_Team == "Chelsea"] <- broken_data_4$GW_Position2
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Team_position1 = ifelse(broken_data_4$Home_Team == "Chelsea", broken_data_4$GW_Position1, NA),
+         Team_position2 = ifelse(broken_data_4$Visiting_Team == "Chelsea", broken_data_4$GW_Position2, NA))
+
+#broken_data_4$ChelseaPosition <- ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$GW_Position1, NA)
+#broken_data_4$ChelseaPositionAll <- ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$GW_Position2, broken_data_4$ChelseaPosition)
+
+#If one change is dependent on another then we cant put it in the same mutate, we have to pipe another mutate that is dependent on the previous data
+broken_data_4 <- broken_data_4 %>%
+  mutate(ChelseaPosition = ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$GW_Position1, NA)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(ChelseaPositionAll = ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$GW_Position2, broken_data_4$ChelseaPosition))
+
+
+#broken_data_4$OpponentPosition <- ifelse(broken_data_4$Home_Team != 'Chelsea', broken_data_4$GW_Position1, NA)
+#broken_data_4$OpponentPositionAll <- ifelse(broken_data_4$Visiting_Team != 'Chelsea', broken_data_4$GW_Position2, broken_data_4$OpponentPosition)
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(OpponentPosition = ifelse(broken_data_4$Home_Team != 'Chelsea', broken_data_4$GW_Position1, NA)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(OpponentPositionAll = ifelse(broken_data_4$Visiting_Team != 'Chelsea', broken_data_4$GW_Position2, broken_data_4$OpponentPosition))
+
+#broken_data_4$Team_position1 <- broken_data_4$GW_Position1[broken_data_4$Home_Team == "Chelsea"]
+#broken_data_4$Team_position2 <- broken_data_4$GW_Position2[broken_data_4$Visiting_Team == "Chelsea"]
+
+#broken_data_4$Played_Game <- grepl("'",broken_data_4$Minutes_Played)
+
+#broken_data_4$ChelseaGoal <- ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$Team_Goals_Scored, NA)
+#broken_data_4$ChelseaGoalAll <- ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$Team_Goals_Against, broken_data_4$ChelseaGoal)
+
+#broken_data_4$OpponentGoal <- ifelse(broken_data_4$Home_Team != 'Chelsea', broken_data_4$Team_Goals_Scored, NA)
+#broken_data_4$OpponentGoalAll <- ifelse(broken_data_4$Visiting_Team != 'Chelsea', broken_data_4$Team_Goals_Against, broken_data_4$OpponentGoal)
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Team_position1 = ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$GW_Position1, NA),
+         Team_position2 = ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$GW_Position2, NA))
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Played_Game = grepl("'",broken_data_4$Minutes_Played)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(ChelseaGoal = ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$Team_Goals_Scored, NA)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(ChelseaGoalAll = ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$Team_Goals_Against, broken_data_4$ChelseaGoal)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(OpponentGoal = ifelse(broken_data_4$Home_Team != 'Chelsea', broken_data_4$Team_Goals_Scored, NA)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(OpponentGoalAll = ifelse(broken_data_4$Visiting_Team != 'Chelsea', broken_data_4$Team_Goals_Against, broken_data_4$OpponentGoal))
+         
+
+#broken_data_4$Result <- ifelse(broken_data_4$ChelseaGoalAll - broken_data_4$OpponentGoalAll > 0, 'W',
+#                               ifelse(broken_data_4$ChelseaGoalAll - broken_data_4$OpponentGoalAll == 0, 'D', 'L'))
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Result = ifelse(broken_data_4$ChelseaGoalAll - broken_data_4$OpponentGoalAll > 0, 'W',
+                               ifelse(broken_data_4$ChelseaGoalAll - broken_data_4$OpponentGoalAll == 0, 'D', 'L')))
+
+#broken_data_4$Goal_Y_N <- ifelse(broken_data_4$Goals_Scored != 0, 1, 0)
+#broken_data_4$Assist_Y_N <- ifelse(broken_data_4$Assists != 0, 1, 0)
+#broken_data_4$Carded_Y_N <- ifelse(broken_data_4$Yellow_Cards != 0 | 
+#                                     broken_data_4$Red_Cards != 0 |
+#                                     broken_data_4$Two_Yellows != 0, 1, 0)
+
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Goal_Y_N = ifelse(broken_data_4$Goals_Scored != 0, 1, 0),
+         Assist_Y_N = ifelse(broken_data_4$Assists != 0, 1, 0),
+         Carded_Y_N = ifelse(broken_data_4$Yellow_Cards != 0 | 
+                                     broken_data_4$Red_Cards != 0 |
+                                     broken_data_4$Two_Yellows != 0, 1, 0))
+
+
+broken_data_4[is.na(broken_data_4)] <- 0
+
+#broken_data_4$Goal_Y_N <- as.factor(broken_data_4$Goal_Y_N)
+#broken_data_4$Played_Game <- as.character(broken_data_4$Played_Game)
+#broken_data_4$Minutes_Played_No <- as.numeric(gsub("'", "", broken_data_4$Minutes_Played))
+#broken_data_4$Minutes_Played <- as.factor(gsub(" ", "_", broken_data_4$Minutes_Played))
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Goal_Y_N = as.factor(broken_data_4$Goal_Y_N),
+         Played_Game = as.character(broken_data_4$Played_Game),
+         Minutes_Played_No = as.numeric(gsub("'", "", broken_data_4$Minutes_Played)),
+         Minutes_Played = as.factor(gsub(" ", "_", broken_data_4$Minutes_Played)))
+
+
+broken_data_4[is.na(broken_data_4)] <- 0
+
+return(broken_data_4)
+}
+
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+
+data_2012 <- data_cleaning_fn(yearly_data_2012)
+data_2013 <- data_cleaning_fn(yearly_data_2013)
+data_2014 <- data_cleaning_fn(yearly_data_2014)
+data_2015 <- data_cleaning_fn(yearly_data_2015)
+data_2016 <- data_cleaning_fn(yearly_data_2016)
+
+data_j1 <- rbind(data_2012, data_2013)
+data_j2 <- rbind(data_j1, data_2014)
+data_j3 <- rbind(data_j2, data_2015)
+data_j4 <- rbind(data_j3, data_2016)
+
+data_j4 <- data_j4 %>%
+  mutate(Month = as.factor(Month),
+         Date = as.factor(Date),
+         Year = as.factor(Year),
+         Home_Team = as.factor(Home_Team),
+         GW_Position1 = as.factor(GW_Position1),
+         Visiting_Team = as.factor(Visiting_Team),
+         GW_Position2 = as.factor(GW_Position2),
+         Position = as.factor(Position),
+         Yellow_Cards = as.factor(Yellow_Cards),
+         Two_Yellows = as.factor(Two_Yellows),
+         Red_Cards = as.factor(Red_Cards),
+         Minutes_Played = as.numeric(Minutes_Played),
+         Month_No = as.factor(Month_No),
+         Team_position1 = as.factor(Team_position1),
+         Team_position2 = as.factor(Team_position2),
+         ChelseaPosition = as.factor(ChelseaPosition),
+         ChelseaPositionAll = as.factor(ChelseaPositionAll),
+         OpponentPosition = as.factor(OpponentPosition),
+         OpponentPositionAll = as.factor(OpponentPositionAll),
+         Played_Game = as.factor(Played_Game),
+         Result = as.factor(Result),
+         Goal_Y_N = as.factor(Goal_Y_N),
+         Assist_Y_N = as.factor(Assist_Y_N),
+         Carded_Y_N = as.factor(Carded_Y_N)
+         )
+
+#str(data_j4)
+```
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+
+DT::datatable(
+  data_j4, rownames = FALSE, filter = "top", class = "cell-border stripe", extensions = "Buttons",
+  options = list(
+    initComplete = JS(
+    "function(settings, json) {",
+    "$(this.api().table().header()).css({'background-color': '#A9A9A9', 'color': '#fff'});",
+    "}"),
+    pageLength = 38,
+    lengthMenu = c(10, 20, 35, 40),
+    scrollY = 350,
+    scrollX = TRUE,
+    dom = "Bfrtip",
+    buttons = list("csv","excel","pdf", I("colvis"))
+  )
+)
+
+```
+
+##APPENDIX
+
+###Library Import
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(DT)
+library(devtools)
+library(htmltab)
+```
+
+
+###Data Import
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+
+data_import_fn <- function(year){
+  
+url <- "https://www.transfermarkt.co.uk/eden-hazard/leistungsdatendetails/spieler/50202/saison/YYYY/verein/631/liga/0/wettbewerb//pos/0/trainer_id/0/plus/1"
+
+updated_url <- gsub('YYYY',as.character(year),url)
+
+num <- 1
+new_data <- htmltab(doc = updated_url, which = num, rm_nodata_cols = F)
+
+while(nrow(new_data) != 38){
+
+  new_data <- htmltab(doc = updated_url, which = num, rm_nodata_cols = F)
+  num <- num + 1
+
+}
+
+new_data <- new_data %>%
+  setNames(c("GW", "Date", "Home_Team1", "Home_Team", "Visiting_Team1", "Visiting_Team",
+                        "Result", "Position", "Goals_Scored", "Assists", "Own_Goals", "Yellow_Cards",
+                        "Two_Yellows", "Red_Cards", "Substituted_In", "Substituted_Out", "Minutes_Played"))
+
+#colnames(new_data) <- c("GW", "Date", "Home_Team1", "Home_Team", "Visiting_Team1", "Visiting_Team",
+#                        "Result", "Position", "Goals_Scored", "Assists", "Own_Goals", "Yellow_Cards",
+#                        "Two_Yellows", "Red_Cards", "Substituted_In", "Substituted_Out", "Minutes_Played")
+
+#new_data$Home_Team1 <- NULL
+#new_data$Visiting_Team1 <- NULL
+
+new_data <- new_data %>%
+  select(-c(Home_Team1, Visiting_Team1))
+
+return(new_data)
+  
+}
+
+```
+
+
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+
+yearly_data_2012 <- data_import_fn(2012)
+yearly_data_2013 <- data_import_fn(2013)
+yearly_data_2014 <- data_import_fn(2014)
+yearly_data_2015 <- data_import_fn(2015)
+yearly_data_2016 <- data_import_fn(2016)
+
+```
+
+###Data Cleaning
+
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+
+data_cleaning_fn <- function(df) {
+broken_data <- df %>%
+  separate(Result, c("Team_Goals_Scored", "Team_Goals_Against"), ":")
+
+broken_data_1 <- broken_data %>%
+  separate(Home_Team, c("Home_Team","GW_Position1"), "\\(")
+
+#broken_data_1$GW_Position1 <- gsub(".)", "", broken_data_1$GW_Position1)
+
+broken_data_1 <- broken_data_1 %>%
+  mutate(GW_Position1 = gsub(".)", "", broken_data_1$GW_Position1))
+
+broken_data_2 <- broken_data_1 %>%
+  separate(Visiting_Team, c("Visiting_Team","GW_Position2"), "\\(")
+
+#broken_data_2$GW_Position2 <- gsub(".)", "", broken_data_2$GW_Position2)
+
+broken_data_2 <- broken_data_2 %>%
+  mutate(GW_Position2 = gsub(".)", "", broken_data_2$GW_Position2))
+
+#str(broken_data_2)
+
+broken_data_2 <- broken_data_2 %>%
+  mutate(Team_Goals_Scored = as.numeric(broken_data_2$Team_Goals_Scored),
+         Team_Goals_Against = as.numeric(broken_data_2$Team_Goals_Against),
+         Goals_Scored = as.numeric(broken_data_2$Goals_Scored),
+         Assists = as.numeric(broken_data_2$Assists),
+         Own_Goals = as.numeric(broken_data_2$Own_Goals))
+
+#broken_data_2$Team_Goals_Scored <- as.numeric(broken_data_2$Team_Goals_Scored)
+#broken_data_2$Team_Goals_Against <- as.numeric(broken_data_2$Team_Goals_Against)
+#broken_data_2$Goals_Scored <- as.numeric(broken_data_2$Goals_Scored)
+#broken_data_2$Assists <- as.numeric(broken_data_2$Assists)
+#broken_data_2$Own_Goals <- as.numeric(broken_data_2$Own_Goals)
+
+#Convert the date into a date format to get some time series analysis graphs for the future
+broken_data_3 <- broken_data_2 %>%
+  separate(Date, c("Date","Year"), ", ")
+
+broken_data_4 <- broken_data_3 %>%
+  separate(Date, c("Month","Date"), " ")
+
+
+#broken_data_4$Month <- gsub('\\s+','',broken_data_4$Month)
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Month = gsub('\\s+','',broken_data_4$Month))
+
+#broken_data_4$Month_No <- ifelse(broken_data_4$Month == 'Jan',1,
+#                                 ifelse(broken_data_4$Month == 'Feb',2,
+#                                  ifelse(broken_data_4$Month == 'Mar',3,
+#                                    ifelse(broken_data_4$Month == 'Apr',4,
+#                                      ifelse(broken_data_4$Month == 'May',5,
+#                                        ifelse(broken_data_4$Month == 'Jun',6,
+#                                          ifelse(broken_data_4$Month == 'Jul',7,
+#                                            ifelse(broken_data_4$Month == 'Aug',8,
+#                                              ifelse(broken_data_4$Month == 'Sep',9,
+#                                                ifelse(broken_data_4$Month == 'Oct',10,
+#                                                  ifelse(broken_data_4$Month == 'Nov',11,
+#                                                    ifelse(broken_data_4$Month == 'Dec',12,0))))))))))))
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Month_No = ifelse(broken_data_4$Month == 'Jan',1,
+                                 ifelse(broken_data_4$Month == 'Feb',2,
+                                  ifelse(broken_data_4$Month == 'Mar',3,
+                                    ifelse(broken_data_4$Month == 'Apr',4,
+                                      ifelse(broken_data_4$Month == 'May',5,
+                                        ifelse(broken_data_4$Month == 'Jun',6,
+                                          ifelse(broken_data_4$Month == 'Jul',7,
+                                            ifelse(broken_data_4$Month == 'Aug',8,
+                                              ifelse(broken_data_4$Month == 'Sep',9,
+                                                ifelse(broken_data_4$Month == 'Oct',10,
+                                                  ifelse(broken_data_4$Month == 'Nov',11,
+                                                    ifelse(broken_data_4$Month == 'Dec',12,0)))))))))))))
+
+  
+#broken_data_4$Complete_Date <- paste(broken_data_4$Year,broken_data_4$Month_No,broken_data_4$Date,sep = '-')
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Complete_Date = paste(broken_data_4$Year,broken_data_4$Month_No,broken_data_4$Date,sep = '-'))
+
+#broken_data_4$Complete_Date <- as.Date(broken_data_4$Complete_Date)
+#broken_data_4$GW_Position1 <- as.numeric(broken_data_4$GW_Position1)
+#broken_data_4$GW_Position2 <- as.numeric(broken_data_4$GW_Position2)
+
+#broken_data_4$Home_Team <- gsub('\\s+','',broken_data_4$Home_Team)
+#broken_data_4$Visiting_Team <- gsub('\\s+','',broken_data_4$Visiting_Team)
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Complete_Date = as.Date(broken_data_4$Complete_Date),
+         GW_Position1 = as.numeric(broken_data_4$GW_Position1),
+         GW_Position2 = as.numeric(broken_data_4$GW_Position2),
+         Home_Team = gsub('\\s+','',broken_data_4$Home_Team),
+         Visiting_Team = gsub('\\s+','',broken_data_4$Visiting_Team))
+
+#broken_data_4$Team_position <- NULL         
+
+#broken_data_4 <- broken_data_4 %>%
+#  select(-c(Team_position))
+
+#broken_data_4$Team_position1[broken_data_4$Home_Team == "Chelsea"] <- broken_data_4$GW_Position1
+#broken_data_4$Team_position2[broken_data_4$Visiting_Team == "Chelsea"] <- broken_data_4$GW_Position2
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Team_position1 = ifelse(broken_data_4$Home_Team == "Chelsea", broken_data_4$GW_Position1, NA),
+         Team_position2 = ifelse(broken_data_4$Visiting_Team == "Chelsea", broken_data_4$GW_Position2, NA))
+
+#broken_data_4$ChelseaPosition <- ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$GW_Position1, NA)
+#broken_data_4$ChelseaPositionAll <- ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$GW_Position2, broken_data_4$ChelseaPosition)
+
+#If one change is dependent on another then we cant put it in the same mutate, we have to pipe another mutate that is dependent on the previous data
+broken_data_4 <- broken_data_4 %>%
+  mutate(ChelseaPosition = ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$GW_Position1, NA)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(ChelseaPositionAll = ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$GW_Position2, broken_data_4$ChelseaPosition))
+
+
+#broken_data_4$OpponentPosition <- ifelse(broken_data_4$Home_Team != 'Chelsea', broken_data_4$GW_Position1, NA)
+#broken_data_4$OpponentPositionAll <- ifelse(broken_data_4$Visiting_Team != 'Chelsea', broken_data_4$GW_Position2, broken_data_4$OpponentPosition)
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(OpponentPosition = ifelse(broken_data_4$Home_Team != 'Chelsea', broken_data_4$GW_Position1, NA)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(OpponentPositionAll = ifelse(broken_data_4$Visiting_Team != 'Chelsea', broken_data_4$GW_Position2, broken_data_4$OpponentPosition))
+
+#broken_data_4$Team_position1 <- broken_data_4$GW_Position1[broken_data_4$Home_Team == "Chelsea"]
+#broken_data_4$Team_position2 <- broken_data_4$GW_Position2[broken_data_4$Visiting_Team == "Chelsea"]
+
+#broken_data_4$Played_Game <- grepl("'",broken_data_4$Minutes_Played)
+
+#broken_data_4$ChelseaGoal <- ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$Team_Goals_Scored, NA)
+#broken_data_4$ChelseaGoalAll <- ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$Team_Goals_Against, broken_data_4$ChelseaGoal)
+
+#broken_data_4$OpponentGoal <- ifelse(broken_data_4$Home_Team != 'Chelsea', broken_data_4$Team_Goals_Scored, NA)
+#broken_data_4$OpponentGoalAll <- ifelse(broken_data_4$Visiting_Team != 'Chelsea', broken_data_4$Team_Goals_Against, broken_data_4$OpponentGoal)
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Team_position1 = ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$GW_Position1, NA),
+         Team_position2 = ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$GW_Position2, NA))
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Played_Game = grepl("'",broken_data_4$Minutes_Played)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(ChelseaGoal = ifelse(broken_data_4$Home_Team == 'Chelsea', broken_data_4$Team_Goals_Scored, NA)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(ChelseaGoalAll = ifelse(broken_data_4$Visiting_Team == 'Chelsea', broken_data_4$Team_Goals_Against, broken_data_4$ChelseaGoal)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(OpponentGoal = ifelse(broken_data_4$Home_Team != 'Chelsea', broken_data_4$Team_Goals_Scored, NA)) 
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(OpponentGoalAll = ifelse(broken_data_4$Visiting_Team != 'Chelsea', broken_data_4$Team_Goals_Against, broken_data_4$OpponentGoal))
+         
+
+#broken_data_4$Result <- ifelse(broken_data_4$ChelseaGoalAll - broken_data_4$OpponentGoalAll > 0, 'W',
+#                               ifelse(broken_data_4$ChelseaGoalAll - broken_data_4$OpponentGoalAll == 0, 'D', 'L'))
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Result = ifelse(broken_data_4$ChelseaGoalAll - broken_data_4$OpponentGoalAll > 0, 'W',
+                               ifelse(broken_data_4$ChelseaGoalAll - broken_data_4$OpponentGoalAll == 0, 'D', 'L')))
+
+#broken_data_4$Goal_Y_N <- ifelse(broken_data_4$Goals_Scored != 0, 1, 0)
+#broken_data_4$Assist_Y_N <- ifelse(broken_data_4$Assists != 0, 1, 0)
+#broken_data_4$Carded_Y_N <- ifelse(broken_data_4$Yellow_Cards != 0 | 
+#                                     broken_data_4$Red_Cards != 0 |
+#                                     broken_data_4$Two_Yellows != 0, 1, 0)
+
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Goal_Y_N = ifelse(broken_data_4$Goals_Scored != 0, 1, 0),
+         Assist_Y_N = ifelse(broken_data_4$Assists != 0, 1, 0),
+         Carded_Y_N = ifelse(broken_data_4$Yellow_Cards != 0 | 
+                                     broken_data_4$Red_Cards != 0 |
+                                     broken_data_4$Two_Yellows != 0, 1, 0))
+
+
+broken_data_4[is.na(broken_data_4)] <- 0
+
+#broken_data_4$Goal_Y_N <- as.factor(broken_data_4$Goal_Y_N)
+#broken_data_4$Played_Game <- as.character(broken_data_4$Played_Game)
+#broken_data_4$Minutes_Played_No <- as.numeric(gsub("'", "", broken_data_4$Minutes_Played))
+#broken_data_4$Minutes_Played <- as.factor(gsub(" ", "_", broken_data_4$Minutes_Played))
+
+broken_data_4 <- broken_data_4 %>%
+  mutate(Goal_Y_N = as.factor(broken_data_4$Goal_Y_N),
+         Played_Game = as.character(broken_data_4$Played_Game),
+         Minutes_Played_No = as.numeric(gsub("'", "", broken_data_4$Minutes_Played)),
+         Minutes_Played = as.factor(gsub(" ", "_", broken_data_4$Minutes_Played)))
+
+
+broken_data_4[is.na(broken_data_4)] <- 0
+
+return(broken_data_4)
+}
+
+```
+
+
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+
+data_2012 <- data_cleaning_fn(yearly_data_2012)
+data_2013 <- data_cleaning_fn(yearly_data_2013)
+data_2014 <- data_cleaning_fn(yearly_data_2014)
+data_2015 <- data_cleaning_fn(yearly_data_2015)
+data_2016 <- data_cleaning_fn(yearly_data_2016)
+
+data_j1 <- rbind(data_2012, data_2013)
+data_j2 <- rbind(data_j1, data_2014)
+data_j3 <- rbind(data_j2, data_2015)
+data_j4 <- rbind(data_j3, data_2016)
+
+data_j4 <- data_j4 %>%
+  mutate(Month = as.factor(Month),
+         Date = as.factor(Date),
+         Year = as.factor(Year),
+         Home_Team = as.factor(Home_Team),
+         GW_Position1 = as.factor(GW_Position1),
+         Visiting_Team = as.factor(Visiting_Team),
+         GW_Position2 = as.factor(GW_Position2),
+         Position = as.factor(Position),
+         Yellow_Cards = as.factor(Yellow_Cards),
+         Two_Yellows = as.factor(Two_Yellows),
+         Red_Cards = as.factor(Red_Cards),
+         Minutes_Played = as.numeric(Minutes_Played),
+         Month_No = as.factor(Month_No),
+         Team_position1 = as.factor(Team_position1),
+         Team_position2 = as.factor(Team_position2),
+         ChelseaPosition = as.factor(ChelseaPosition),
+         ChelseaPositionAll = as.factor(ChelseaPositionAll),
+         OpponentPosition = as.factor(OpponentPosition),
+         OpponentPositionAll = as.factor(OpponentPositionAll),
+         Played_Game = as.factor(Played_Game),
+         Result = as.factor(Result),
+         Goal_Y_N = as.factor(Goal_Y_N),
+         Assist_Y_N = as.factor(Assist_Y_N),
+         Carded_Y_N = as.factor(Carded_Y_N)
+         )
+
+#str(data_j4)
+```
+
+###DataTable Creation
+
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+
+DT::datatable(
+  data_j4, rownames = FALSE, filter = "top", class = "cell-border stripe", extensions = "Buttons",
+  options = list(
+    initComplete = JS(
+    "function(settings, json) {",
+    "$(this.api().table().header()).css({'background-color': '#A9A9A9', 'color': '#fff'});",
+    "}"),
+    pageLength = 38,
+    lengthMenu = c(10, 20, 35, 40),
+    scrollY = 350,
+    scrollX = TRUE,
+    dom = "Bfrtip",
+    buttons = list("csv","excel","pdf", I("colvis"))
+  )
+)
+
+```
